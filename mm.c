@@ -46,16 +46,25 @@
 /* What is the correct alignment? */
 #define ALIGNMENT 16
 
-static const uint64_t HALF_ALIGNMENT = 8;
+static const uint64_t HEADER_SIZE = 8;
+static const uint64_t FOOTER_SIZE = 8;
 static const size_t MAX_SIZE = 4096;
+static const uint64_t MIN_BLOCK_SIZE = 32;
 
 static char* heapStart = 0;
+static char* prologuePointer = 0;
+static char* epiloguePointer = 0;
 //static char* nextFit;
 
 static void *addToHeap(size_t words);
-static void move(void *bp, size_t asize);
+static void put(void *bp, size_t asize);
 static void *fit(size_t asize);
 static void *coalesce(void *bp);
+
+struct freeBlockPointers {
+	uint64_t previous;
+	uint64_t next;
+}
 
 /* rounds up to the nearest multiple of ALIGNMENT */
 static size_t align(size_t x)
@@ -95,7 +104,7 @@ static inline uint64_t combine(uint64_t size, uint64_t isAllocated)
 
 static inline char* getHeader(void* p)
 {
-	return((char*)(p) - HALF_ALIGNMENT);
+	return((char*)(p) - HEADER_SIZE);
 }
 
 static inline char* getFooter(void* p)
@@ -105,7 +114,7 @@ static inline char* getFooter(void* p)
 
 static inline char* getNext(void* p)
 {
-	return((char*)(p) + getSize(((char*)(p) - HALF_ALIGNMENT)));
+	return((char*)(p) + getSize(((char*)(p) - HEADER_SIZE)));
 }
 
 static inline char* getPrevious(void* p)
@@ -113,70 +122,32 @@ static inline char* getPrevious(void* p)
 	return((char*)(p) - getSize(((char*)(p) - ALIGNMENT)));
 }
 
-/*static void* coalesce(void* p) 
-{
-	size_t previous = getAllocated(getFooter(getPrevious(p)));
-	size_t next = getAllocated(getHeader(getNext(p)));
-	size_t size = getSize(getHeader(p));
-
-	if (previous && next)
-	{
-		return p;
-	} 
-	else if (previous && !next) 
-	{
-		size = size + getSize(getHeader(getNext(p)));
-		writeData(getHeader(p), combine(size, 0));
-		writeData(getFooter(p), combine(size, 0));
-	}
-	else if (!previous && next)
-	{
-		size = size + getSize(getFooter(getPrevious(p)));
-		writeData(getFooter(p), combine(size, 0));
-		writeData(getHeader(getPrevious(p)), combine(size, 0));
-		p = getPrevious(p);
-	}
-	else
-	{
-		size = size + getSize(getFooter(getPrevious(p))) + getSize(getHeader(getNext(p)));
-		writeData(getHeader(getPrevious(p)), combine(size, 0));
-		writeData(getFooter(getNext(p)), combine(size, 0));
-		p = getPrevious(p);
-	}
-
-	if ((nextFit > (char*)p) && (nextFit < getNext(p)))
-	{
-		nextFit = p;
-	}
-
-	return p;
-}*/
 
 static void *coalesce(void *bp) 
 {
-    size_t prev_alloc = getAllocated(getFooter(getPrevious(bp)));
-    size_t next_alloc = getAllocated(getHeader(getNext(bp)));
+    size_t previousIsAllocated = getAllocated(getFooter(getPrevious(bp)));
+    size_t nextIsAllocated = getAllocated(getHeader(getNext(bp)));
     size_t size = getSize(getHeader(bp));
 
-    if (prev_alloc && next_alloc) {            /* Case 1 */
-	return bp;
+    if (previousIsAllocated && nextIsAllocated) {			/* Case 1 */
+		return bp;
     }
 
-    else if (prev_alloc && !next_alloc) {      /* Case 2 */
+    else if (previousIsAllocated && !nextIsAllocated) {		/* Case 2 */
 		size += getSize(getHeader(getNext(bp)));
 		writeData(getHeader(bp), combine(size, 0));
 		writeData(getFooter(bp), combine(size,0));
     }
 
-    else if (!prev_alloc && next_alloc) {      /* Case 3 */
+    else if (!previousIsAllocated && nextIsAllocated) {		/* Case 3 */
 		size += getSize(getHeader(getPrevious(bp)));
 		writeData(getFooter(bp), combine(size, 0));
 		writeData(getHeader(getPrevious(bp)), combine(size, 0));
 		bp = getPrevious(bp);
     }
 
-    else {                                     /* Case 4 */
-	size += getSize(getHeader(getPrevious(bp))) + 
+    else {													/* Case 4 */
+		size += getSize(getHeader(getPrevious(bp))) + 
 	    getSize(getFooter(getNext(bp)));
 		writeData(getHeader(getPrevious(bp)), combine(size, 0));
 		writeData(getFooter(getNext(bp)), combine(size, 0));
@@ -193,55 +164,41 @@ static void *coalesce(void *bp)
     return bp;
 }
 
-/*static void* addToHeap(size_t bytes)
-{
-	char* p;
-	size_t alignedBytes = align(bytes);
-
-	p = mem_sbrk(alignedBytes);
-	if ((long)(p) == -1) {
-		return NULL;
-	}
-
-	writeData(getHeader(p), combine(alignedBytes, 0));
-	writeData(getFooter(p), combine(alignedBytes, 0));
-	writeData(getHeader(getNext(p)), combine(0,1));
-
-	return coalesce(p);
-}*/
 
 static void* addToHeap(size_t bytes) 
 {
     char *bp;
     size_t size= align(bytes);
 
-    /* Allocate an even number of words to maintain alignment */
     bp = mem_sbrk(size);
+
 	if ((long)(bp) == -1) {
+		printf("%s\n", "MEM_SBRK FAILED");
 		return NULL;
 	}                                       //line:vm:mm:endextend
 
     /* Initialize free block header/footer and the epilogue header */
     writeData(getHeader(bp), combine(size, 0));         /* Free block header */   //line:vm:mm:freeblockhdr
     writeData(getFooter(bp), combine(size, 0));         /* Free block footer */   //line:vm:mm:freeblockftr
-    writeData(getHeader(getNext(bp)), combine(0, 1)); /* New epilogue header */ //line:vm:mm:newepihdr
+    writeData(getHeader(getNext(bp)), combine(0, 1));   /* New epilogue header */ //line:vm:mm:newepihdr
+    epiloguePointer = getHeader(getNext(bp));
 
     /* Coalesce if the previous block was free */
     return coalesce(bp);                                          //line:vm:mm:returnblock
 }
 
 
-static void move(void* p, size_t alignedSize)
+static void put(void* p, size_t putSize)
 {
 	size_t blockSize = getSize(getHeader(p));
 
-	if ((blockSize - alignedSize) >= (2*ALIGNMENT))
+	if ((blockSize - putSize) >= (MIN_BLOCK_SIZE))
 	{
-		writeData(getHeader(p), combine(alignedSize, 1));
-		writeData(getFooter(p), combine(alignedSize, 1));
+		writeData(getHeader(p), combine(putSize, 1));
+		writeData(getFooter(p), combine(putSize, 1));
 		p = getNext(p);
-		writeData(getHeader(p), combine(blockSize - alignedSize, 0));
-		writeData(getFooter(p), combine(blockSize - alignedSize, 0));
+		writeData(getHeader(p), combine(blockSize - putSize, 0));
+		writeData(getFooter(p), combine(blockSize - putSize, 0));
 	}
 	else {
 		writeData(getHeader(p), combine(blockSize, 1));
@@ -249,7 +206,7 @@ static void move(void* p, size_t alignedSize)
 	}
 }
 
-static void* fit(size_t alignedSize)
+static void* findFit(size_t putSize)
 {
 	/*char* previousFit = nextFit;
 
@@ -273,51 +230,26 @@ static void* fit(size_t alignedSize)
 	void *bp;
 
     for (bp = heapStart; getSize(getHeader(bp)) > 0; bp = getNext(bp)) {
-	if (!getAllocated(getHeader(bp)) && (alignedSize <= getSize(getHeader(bp)))) {
-	    return bp;
-	}
+		if (!getAllocated(getHeader(bp)) && (putSize <= getSize(getHeader(bp)))) {
+		    return bp;
+		}
     }
     return NULL;
 }
 
 
-/*
- * Initialize: return false on error, true on success.
- */
-/*bool mm_init(void)
-{
-    heapStart = mem_sbrk(4 * HALF_ALIGNMENT);
-    if (heapStart == (void*)-1)
-    {
-    	return -1;
-    }
-    writeData(heapStart, 0);
-    writeData(heapStart + (1 * HALF_ALIGNMENT), combine(ALIGNMENT, 1));
-    writeData(heapStart + (2 * HALF_ALIGNMENT), combine(ALIGNMENT, 1));
-    writeData(heapStart + (3 * HALF_ALIGNMENT), combine(0,1));
-    heapStart = heapStart + (2 * HALF_ALIGNMENT);
-
-    nextFit = heapStart;
-
-    if (addToHeap(MAX_SIZE) == NULL)
-    {
-    	return -1;
-    }
-
-    return 0;
-}*/
 
 bool mm_init(void) 
 {
     /* Create the initial empty heap */
-    if ((heapStart = mem_sbrk(4*HALF_ALIGNMENT)) == (void *)-1){ //line:vm:mm:begininit
+    if ((heapStart = mem_sbrk(4*HEADER_SIZE)) == (void *)-1){ //line:vm:mm:begininit
 		return false;
 	}
     writeData(heapStart, 0);                          /* Alignment padding */
-    writeData(heapStart + (1*HALF_ALIGNMENT), combine(ALIGNMENT, 1)); /* Prologue header */ 
-    writeData(heapStart + (2*HALF_ALIGNMENT), combine(ALIGNMENT, 1)); /* Prologue footer */ 
-    writeData(heapStart + (3*HALF_ALIGNMENT), combine(0, 1));     /* Epilogue header */
-    heapStart += (2*HALF_ALIGNMENT);                     //line:vm:mm:endinit  
+    writeData(heapStart + (1*HEADER_SIZE), combine(ALIGNMENT, 1)); /* Prologue header */ 
+    writeData(heapStart + (2*HEADER_SIZE), combine(ALIGNMENT, 1)); /* Prologue footer */ 
+    writeData(heapStart + (3*HEADER_SIZE), combine(0, 1));     /* Epilogue header */
+    heapStart += (2*HEADER_SIZE);                     //line:vm:mm:endinit  
 /* $end mminit */
 
 //#ifdef NEXT_FIT
@@ -327,14 +259,15 @@ bool mm_init(void)
 
     /* Extend the empty heap with a free block of CHUNKSIZE bytes */
     if (addToHeap(MAX_SIZE) == NULL) {
+    	printf("%s\n", "FAILED TO EXTEND HEAP WHEN INITIALIZING");
 		return false;
     }
     return true;
 }
 
-/*
- * malloc
- */
+
+
+
 void* malloc(size_t size)
 {
     size_t alignedSize;
@@ -360,8 +293,8 @@ void* malloc(size_t size)
     	alignedSize = ALIGNMENT * ((size + ALIGNMENT + (ALIGNMENT-1)) / ALIGNMENT);
     }
 
-    if ((p = fit(alignedSize)) != NULL) {
-    	move(p, alignedSize);
+    if ((p = findFit(alignedSize)) != NULL) {
+    	put(p, alignedSize);
     	return p;
     }
 
@@ -371,14 +304,13 @@ void* malloc(size_t size)
     	return NULL;
     }
 
-    move(p, alignedSize);
+    put(p, alignedSize);
 
     return p;
 }
 
-/*
- * free
- */
+
+
 void free(void* p)
 {
     if (p == 0)
@@ -395,9 +327,9 @@ void free(void* p)
 	coalesce(p);
 }
 
-/*
- * realloc
- */
+
+
+
 void* realloc(void* oldptr, size_t size)
 {
     size_t previousSize;
