@@ -154,9 +154,7 @@ static void deleteListNode(void* p)
 
 static void addListNode(void *p)
 {
-	//if (listTail != heapStart) {
 	//setListPointerNext(listTail, p);
-	//}
 	setListPointerPrev(p, listTail);
 	setListPointerNext(p, NULL);
 	listTail = p;
@@ -223,6 +221,7 @@ static void *coalesce(void *bp)
 	//nextFit = bp;
 //#endif
 /* $begin mmfree */
+    mm_checkheap(__LINE__);
     return bp;
 }
 
@@ -263,9 +262,11 @@ static void put(void* p, size_t putSize)
 		}
 		setListPointerNext(getNext(p), getListPointerNext(p));
 		setListPointerPrev(getNext(p), getListPointerPrev(p));
-		setListPointerNext(getListPointerPrev(p), getNext(p));
 		p = getNext(p);
-		//setListPointerPrev(getListPointerNext(p), p);
+		//setListPointerNext(getListPointerPrev(p), p);
+		//if (listTail != p) {
+		//	setListPointerPrev(getListPointerNext(p), p);
+		//}
 		writeData(getHeader(p), combine(blockSize - putSize, 0));
 		writeData(getFooter(p), combine(blockSize - putSize, 0));
 	}
@@ -490,6 +491,34 @@ bool mm_checkheap(int lineno)
     void *prev = NULL;
     bool somethingWrong = false;
 
+    /*printf("%s\n", "LIST CHECK:");
+    while (bp != listTail) {
+    	if (bp == heapStart) {
+    		;
+    	} else {
+	    	if (getAllocated(bp)) {
+	    		printf("%s\n", "ALLOCATED BLOCK IN FREE LIST");
+	    		somethingWrong = true;
+	    	}
+	    	if (bp != getListPointerPrev(getListPointerNext(bp))){
+	    		printf("%s\n", "DISCONTINUOUS LIST");
+	    		somethingWrong = true;
+	    	}
+	    }
+
+    	bp = getListPointerNext(bp);
+    }
+
+    if (bp == listTail) {
+    	if (getListPointerNext(bp) != NULL) {
+    		printf("%s\n", "LIST TAIL NOT FOLLOWED BY NULL");
+    		somethingWrong = true;
+    	}
+    }*/
+
+	bp = heapStart;
+
+    //printf("%s\n", "GENERAL CHECK");
     while (bp != prev && bp != epiloguePointer) {
 
     	//check allocation of prologue and epilogue
@@ -528,7 +557,7 @@ bool mm_checkheap(int lineno)
     }
 
     if (!somethingWrong) {
-	    printf("%s\n", "VALID");
+	    printf("%s: %d\n", "VALID", lineno);
 	}
 
 
