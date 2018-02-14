@@ -62,11 +62,6 @@ static void put(void *bp, size_t asize);
 static void *fit(size_t asize);
 static void *coalesce(void *bp);
 
-struct freeBlockPointers {
-	uint64_t previous;
-	uint64_t next;
-};
-
 /* rounds up to the nearest multiple of ALIGNMENT */
 static size_t align(size_t x)
 {
@@ -123,68 +118,70 @@ static inline char* getPrevious(void* p)
 	return((char*)(p) - getSize(((char*)(p) - ALIGNMENT)));
 }
 
-static inline uint64_t getListPointerPrev(void* p)
+static inline void* getListPointerPrev(void* p)
 {
-	struct freeBlockPointers pointerStruct = * ((struct freeBlockPointers *)(p));
-	return pointerStruct.previous;
+	return *(void **)(p);
 }
 
-static inline uint64_t getListPointerNext(void* p)
+static inline void* getListPointerNext(void* p)
 {
-	struct freeBlockPointers pointerStruct = * ((struct freeBlockPointers *)(p));
-	return pointerStruct.next;
+	return *(void **)(p + 8);
 }
 
 static inline void setListPointerPrev(void* p, void* newPrev)
 {
-	(*(uint64_t*)(p) = (uint64_t) newPrev);
+	*(void **)(p) = newPrev;
 }
 
 static inline void setListPointerNext(void* p, void* newNext)
 {
-	uint64_t* nextField = (uint64_t*)((char*)(p) + HEADER_SIZE);
-	*(nextField) = (uint64_t) newNext;
+	*(void **)(p + 8) = newNext;
 }
 
 static void deleteListNode(void* p)
 {
-	char* next = (char*)getListPointerNext(p);
-	char* prev = (char*)getListPointerPrev(p);
-	setListPointerNext(prev, next);
-	setListPointerPrev(next, prev);
+	void* next = getListPointerNext(p);
+	void* prev = getListPointerPrev(p);
+	if (listTail == p) {
+		setListPointerNext(prev, NULL);
+		listTail = prev;
+	} else {
+		setListPointerPrev(getListPointerNext(p), prev);
+		setListPointerNext(getListPointerPrev(p), next);
+	}
+	
 }
 
 static void addListNode(void *p)
 {
-	struct freeBlockPointers listPointers; 
-	listPointers.previous = (uint64_t) listTail;
-	listPointers.next = 0;
-	if (listTail != heapStart) {
-		setListPointerNext(listTail, p);
-	}
-	(*(struct freeBlockPointers*)(p) = listPointers);
+	//if (listTail != heapStart) {
+	//setListPointerNext(listTail, p);
+	//}
+	setListPointerPrev(p, listTail);
+	setListPointerNext(p, NULL);
 	listTail = p;
 }
 
 static void *coalesce(void *bp) 
 {
-    size_t previousIsAllocated = getAllocated(getFooter(getPrevious(bp)));
-    size_t nextIsAllocated = getAllocated(getHeader(getNext(bp)));
-    size_t size = getSize(getHeader(bp));
-    struct freeBlockPointers listPointers;
+    uint64_t previousIsAllocated = getAllocated(getFooter(getPrevious(bp)));
+    uint64_t nextIsAllocated = getAllocated(getHeader(getNext(bp)));
+    uint64_t size = getSize(getHeader(bp));
 
     if (previousIsAllocated && nextIsAllocated) {			/* Case 1 */
-    	//addListNode(bp);
+    	addListNode(bp);
 		return bp;
     }
 
     else if (previousIsAllocated && !nextIsAllocated) {		/* Case 2 */
     	char* next = getNext(bp);
-    	/*listPointers.previous = getListPointerPrev(next);
-    	listPointers.next = getListPointerNext(next);
+
     	if (listTail == next) {
     		listTail = bp;
-    	}*/
+    	}
+    	setListPointerNext(bp, getListPointerNext(next));
+    	setListPointerPrev(bp, getListPointerPrev(next));
+
 		size += getSize(getHeader(next));
 		writeData(getHeader(bp), combine(size, 0));
 		writeData(getFooter(bp), combine(size,0));
@@ -192,11 +189,11 @@ static void *coalesce(void *bp)
 
     else if (!previousIsAllocated && nextIsAllocated) {		/* Case 3 */
 		char* prev = getPrevious(bp);
-		/*listPointers.previous = getListPointerPrev(prev);
-		listPointers.next = getListPointerNext(prev);
+
 		if (listTail == bp) {
 			listTail = prev;
-		}*/
+		}
+
 		size += getSize(getHeader(prev));
 		writeData(getFooter(bp), combine(size, 0));
 		writeData(getHeader(getPrevious(bp)), combine(size, 0));
@@ -206,20 +203,17 @@ static void *coalesce(void *bp)
     else {													/* Case 4 */
 		char* prev = getPrevious(bp);
 		char* next = getNext(bp);
-		/*deleteListNode(prev);
-		listPointers.previous = getListPointerPrev(next);
-		listPointers.next = getListPointerNext(next);
+
+		//deleteListNode(next);
 		if ((listTail == bp) || (listTail == next)) {
 			listTail = prev;
-		}*/
+		}
+
 		size += getSize(getHeader(prev)) + getSize(getFooter(next));
 		writeData(getHeader(getPrevious(bp)), combine(size, 0));
 		writeData(getFooter(getNext(bp)), combine(size, 0));
 		bp = getPrevious(bp);
     }
-
-    (*(struct freeBlockPointers*)(bp) = listPointers);
-
 
 /* $end mmfree */
 //#ifdef NEXT_FIT
@@ -264,11 +258,22 @@ static void put(void* p, size_t putSize)
 	{
 		writeData(getHeader(p), combine(putSize, 1));
 		writeData(getFooter(p), combine(putSize, 1));
+		if (listTail == p) {
+			listTail = getNext(p);
+		}
+		setListPointerNext(getNext(p), getListPointerNext(p));
+		setListPointerPrev(getNext(p), getListPointerPrev(p));
+		setListPointerNext(getListPointerPrev(p), getNext(p));
 		p = getNext(p);
+		//setListPointerPrev(getListPointerNext(p), p);
 		writeData(getHeader(p), combine(blockSize - putSize, 0));
 		writeData(getFooter(p), combine(blockSize - putSize, 0));
 	}
 	else {
+		if (listTail == p) {
+			listTail = getListPointerPrev(p);
+		}
+		//deleteListNode(p);
 		writeData(getHeader(p), combine(blockSize, 1));
 		writeData(getFooter(p), combine(blockSize, 1));
 	}
@@ -312,16 +317,18 @@ static void* findFit(size_t putSize)
 bool mm_init(void) 
 {
     /* Create the initial empty heap */
-    if ((heapStart = mem_sbrk(4*HEADER_SIZE)) == (void *)-1){ //line:vm:mm:begininit
+    if ((heapStart = mem_sbrk(6*HEADER_SIZE)) == (void *)-1){ //line:vm:mm:begininit
 		return false;
 	}
     writeData(heapStart, 0);                          /* Alignment padding */
-    writeData(heapStart + (1*HEADER_SIZE), combine(ALIGNMENT, 1)); /* Prologue header */ 
-    writeData(heapStart + (2*HEADER_SIZE), combine(ALIGNMENT, 1)); /* Prologue footer */ 
-    writeData(heapStart + (3*HEADER_SIZE), combine(0, 1));     /* Epilogue header */
+    writeData(heapStart + (1*HEADER_SIZE), combine(2*ALIGNMENT, 1)); /* Prologue header */ 
+    writeData(heapStart + (4*HEADER_SIZE), combine(2*ALIGNMENT, 1)); /* Prologue footer */ 
+    writeData(heapStart + (5*HEADER_SIZE), combine(0, 1));     /* Epilogue header */
     heapStart += (2*HEADER_SIZE);                     //line:vm:mm:endinit  
+
+    setListPointerNext(heapStart, NULL);
+    setListPointerPrev(heapStart, NULL);
     listTail = heapStart;
-    printf("%p\n", heapStart );
 /* $end mminit */
 
 //#ifdef NEXT_FIT
@@ -335,7 +342,7 @@ bool mm_init(void)
 		return false;
     }
 
-    mm_checkheap(336);
+    mm_checkheap(__LINE__);
     return true;
 }
 
@@ -360,11 +367,11 @@ void* malloc(size_t size)
 
     if (size <= ALIGNMENT)
     {
-    	alignedSize = 2* ALIGNMENT;
+    	alignedSize = MIN_BLOCK_SIZE;
     }
     else
     {
-    	alignedSize = ALIGNMENT * ((size + ALIGNMENT + (ALIGNMENT-1)) / ALIGNMENT);
+    	alignedSize = align(size + ALIGNMENT);
     }
 
     if ((p = findFit(alignedSize)) != NULL) {
@@ -483,18 +490,33 @@ bool mm_checkheap(int lineno)
     void *prev = NULL;
     bool somethingWrong = false;
 
-    while (bp != prev) {
+    while (bp != prev && bp != epiloguePointer) {
+
+    	//check allocation of prologue and epilogue
+    	if (!getAllocated(getHeader(epiloguePointer))) {
+    		printf("%s\n", "EPILOGUE NOT ALLOCATED");
+    		somethingWrong = true;
+    	}
+    	if (!getAllocated(getHeader(heapStart))) {
+    		printf("%s\n", "PROLOGUE NOT ALLOCATED");
+    		somethingWrong = true;
+    	}
+
+    	//check alignment
         if (!aligned(bp)){
             printf("%s: %p\n", "NOT ALIGNED", bp);
             somethingWrong = true;
         }
+
+        //check for out of heap range
         if (!in_heap(bp)){
             printf("%s: %p\n", "NOT IN HEAP", bp);
             somethingWrong = true;
         }
-            
+        
+        //check for adjacent free blocks    
         if (prev != NULL){
-            if (getAllocated(prev) == 0 && getAllocated(bp) == 0){
+            if (!getAllocated(getHeader(prev)) && !getAllocated(getHeader(bp))){
                 printf("%s: %p and %p\n", "COLESCE FAILED", prev, bp);
                 somethingWrong = true;
             }
