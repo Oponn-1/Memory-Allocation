@@ -20,7 +20,7 @@
  * If you want debugging output, uncomment the following. Be sure not
  * to have debugging enabled in your final submission
  */
-#define DEBUG
+//#define DEBUG
 
 #ifdef DEBUG
 /* When debugging is enabled, the underlying functions get called */
@@ -140,21 +140,25 @@ static inline void setListPointerNext(void* p, void* newNext)
 
 static void deleteListNode(void* p)
 {
-	void* next = getListPointerNext(p);
+	//void* next = getListPointerNext(p);
 	void* prev = getListPointerPrev(p);
+
 	if (listTail == p) {
 		setListPointerNext(prev, NULL);
 		listTail = prev;
 	} else {
-		setListPointerPrev(getListPointerNext(p), prev);
-		setListPointerNext(getListPointerPrev(p), next);
+		if (getListPointerNext(p) == NULL || getListPointerPrev(p) == NULL) {
+			printf("%s\n", "FOLLOWING NULL POINTER");
+		}
+		setListPointerPrev(getListPointerNext(p), getListPointerPrev(p));
+		setListPointerNext(getListPointerPrev(p), getListPointerNext(p));
 	}
 	
 }
 
 static void addListNode(void *p)
 {
-	//setListPointerNext(listTail, p);
+	setListPointerNext(listTail, p);
 	setListPointerPrev(p, listTail);
 	setListPointerNext(p, NULL);
 	listTail = p;
@@ -174,53 +178,44 @@ static void *coalesce(void *bp)
     else if (previousIsAllocated && !nextIsAllocated) {		/* Case 2 */
     	char* next = getNext(bp);
 
-    	if (listTail == next) {
-    		listTail = bp;
-    	}
-    	setListPointerNext(bp, getListPointerNext(next));
-    	setListPointerPrev(bp, getListPointerPrev(next));
+    	deleteListNode(next);
 
 		size += getSize(getHeader(next));
 		writeData(getHeader(bp), combine(size, 0));
 		writeData(getFooter(bp), combine(size,0));
+
+		addListNode(bp);
     }
 
     else if (!previousIsAllocated && nextIsAllocated) {		/* Case 3 */
 		char* prev = getPrevious(bp);
 
-		if (listTail == bp) {
-			listTail = prev;
-		}
+		deleteListNode(prev);
 
 		size += getSize(getHeader(prev));
 		writeData(getFooter(bp), combine(size, 0));
 		writeData(getHeader(getPrevious(bp)), combine(size, 0));
 		bp = getPrevious(bp);
+
+		addListNode(bp);
     }
 
     else {													/* Case 4 */
 		char* prev = getPrevious(bp);
 		char* next = getNext(bp);
 
-		//deleteListNode(next);
-		if ((listTail == bp) || (listTail == next)) {
-			listTail = prev;
-		}
+		deleteListNode(next);
+		deleteListNode(prev);
 
 		size += getSize(getHeader(prev)) + getSize(getFooter(next));
 		writeData(getHeader(getPrevious(bp)), combine(size, 0));
 		writeData(getFooter(getNext(bp)), combine(size, 0));
 		bp = getPrevious(bp);
+
+		addListNode(bp);
     }
 
-/* $end mmfree */
-//#ifdef NEXT_FIT
-    /* Make sure the rover isn't pointing into the free block */
-    /* that we just coalesced */
-    //if ((nextFit > (char *)bp) && (nextFit < getNext(bp))) 
-	//nextFit = bp;
-//#endif
-/* $begin mmfree */
+
     mm_checkheap(__LINE__);
     return bp;
 }
@@ -255,26 +250,21 @@ static void put(void* p, size_t putSize)
 
 	if ((blockSize - putSize) >= (MIN_BLOCK_SIZE))
 	{
+		deleteListNode(p);
+
 		writeData(getHeader(p), combine(putSize, 1));
 		writeData(getFooter(p), combine(putSize, 1));
-		if (listTail == p) {
-			listTail = getNext(p);
-		}
-		setListPointerNext(getNext(p), getListPointerNext(p));
-		setListPointerPrev(getNext(p), getListPointerPrev(p));
+		
 		p = getNext(p);
-		//setListPointerNext(getListPointerPrev(p), p);
-		//if (listTail != p) {
-		//	setListPointerPrev(getListPointerNext(p), p);
-		//}
+		
 		writeData(getHeader(p), combine(blockSize - putSize, 0));
 		writeData(getFooter(p), combine(blockSize - putSize, 0));
+
+		addListNode(p);
 	}
 	else {
-		if (listTail == p) {
-			listTail = getListPointerPrev(p);
-		}
-		//deleteListNode(p);
+		deleteListNode(p);
+
 		writeData(getHeader(p), combine(blockSize, 1));
 		writeData(getFooter(p), combine(blockSize, 1));
 	}
@@ -282,34 +272,19 @@ static void put(void* p, size_t putSize)
 
 static void* findFit(size_t putSize)
 {
-	/*char* previousFit = nextFit;
-
-	for (; getSize(getHeader(nextFit)) > 0; nextFit = getNext(nextFit))
-	{
-		if (!getAllocated(getHeader(nextFit)) && (alignedSize <= getSize(getHeader(nextFit))))
-		{
-			return nextFit;
-		}
-	}
-
-	for(nextFit = heapStart; nextFit < previousFit; nextFit = getNext(nextFit))
-	{
-		if (!getAllocated(getHeader(nextFit)) && (alignedSize <= getSize(getHeader(nextFit))))
-		{
-			return nextFit;
-		}
-	}
-
-	return NULL;*/
 	void *bp;
 
-	//for (bp = listTail; bp != heapStart; bp = )
+	for (bp = listTail; bp != heapStart; bp = getListPointerPrev(bp)) {
+		if (!getAllocated(getHeader(bp)) && (putSize <= getSize(getHeader(bp)))) {
+			return bp;
+		}
+	}
 
-    for (bp = heapStart; getSize(getHeader(bp)) > 0; bp = getNext(bp)) {
+    /*for (bp = heapStart; getSize(getHeader(bp)) > 0; bp = getNext(bp)) {
 		if (!getAllocated(getHeader(bp)) && (putSize <= getSize(getHeader(bp)))) {
 		    return bp;
 		}
-    }
+    }*/
     return NULL;
 }
 
@@ -318,24 +293,19 @@ static void* findFit(size_t putSize)
 bool mm_init(void) 
 {
     /* Create the initial empty heap */
-    if ((heapStart = mem_sbrk(6*HEADER_SIZE)) == (void *)-1){ //line:vm:mm:begininit
+    if ((heapStart = mem_sbrk(6*HEADER_SIZE)) == (void *)-1){ 
 		return false;
 	}
     writeData(heapStart, 0);                          /* Alignment padding */
-    writeData(heapStart + (1*HEADER_SIZE), combine(2*ALIGNMENT, 1)); /* Prologue header */ 
-    writeData(heapStart + (4*HEADER_SIZE), combine(2*ALIGNMENT, 1)); /* Prologue footer */ 
+    writeData(heapStart + (1*HEADER_SIZE), combine(MIN_BLOCK_SIZE, 1)); /* Prologue header */ 
+    writeData(heapStart + (4*HEADER_SIZE), combine(MIN_BLOCK_SIZE, 1)); /* Prologue footer */ 
     writeData(heapStart + (5*HEADER_SIZE), combine(0, 1));     /* Epilogue header */
-    heapStart += (2*HEADER_SIZE);                     //line:vm:mm:endinit  
+    heapStart += (2*HEADER_SIZE);                      
 
     setListPointerNext(heapStart, NULL);
     setListPointerPrev(heapStart, NULL);
     listTail = heapStart;
-/* $end mminit */
 
-//#ifdef NEXT_FIT
-    //nextFit = heapStart;
-//#endif
-/* $begin mminit */
 
     /* Extend the empty heap with a free block of CHUNKSIZE bytes */
     if (addToHeap(MAX_SIZE) == NULL) {
