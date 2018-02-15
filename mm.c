@@ -54,11 +54,15 @@ static const uint64_t MIN_BLOCK_SIZE = 32;
 static const uint64_t SEGMENT_BOUND_1 = 32;
 static const uint64_t SEGMENT_BOUND_2 = 64;
 static const uint64_t SEGMENT_BOUND_3 = 128;
+static const uint64_t SEGMENT_BOUND_4 = 256;
+static const uint64_t SEGMENT_BOUND_5 = 512;
 
 static char* heapStart = 0;
 static char* list_2_start = 0;
 static char* list_3_start = 0;
 static char* list_4_start = 0;
+static char* list_5_start = 0;
+static char* list_6_start = 0;
 //static char* prologuePointer = 0;
 static char* epiloguePointer = 0;
 //static char* nextFit;
@@ -66,6 +70,8 @@ static char* listTail = 0;
 static char* listTail_2 = 0;
 static char* listTail_3 = 0;
 static char* listTail_4 = 0;
+static char* listTail_5 = 0;
+static char* listTail_6 = 0;
 
 static void *addToHeap(size_t words);
 static void put(void *bp, size_t asize);
@@ -150,7 +156,6 @@ static inline void setListPointerNext(void* p, void* newNext)
 
 static void deleteListNode(void* p)
 {
-	//void* next = getListPointerNext(p);
 	void* prev = getListPointerPrev(p);
 
 	if (listTail == p) {
@@ -165,6 +170,12 @@ static void deleteListNode(void* p)
 	} else if (listTail_4 == p) {
 		setListPointerNext(prev, NULL);
 		listTail_4 = prev;
+	} else if (listTail_5 == p) {
+		setListPointerNext(prev, NULL);
+		listTail_5 = prev;
+	} else if (listTail_6 == p) {
+		setListPointerNext(prev, NULL);
+		listTail_6 = prev;
 	} else {
 		if (getListPointerNext(p) == NULL || getListPointerPrev(p) == NULL) {
 			printf("%s\n", "FOLLOWING NULL POINTER");
@@ -178,7 +189,13 @@ static void deleteListNode(void* p)
 static void addListNode(void *p, uint64_t size)
 {
 	char* targetTail = 0;
-	if (size > SEGMENT_BOUND_3)  {
+	if (size > SEGMENT_BOUND_5)  {
+		targetTail = listTail_6;
+	}
+	if (size <= SEGMENT_BOUND_5) {
+		targetTail = listTail_5;
+	}
+	if (size <= SEGMENT_BOUND_4) {
 		targetTail = listTail_4;
 	}
 	if (size <= SEGMENT_BOUND_3) {
@@ -201,6 +218,10 @@ static void addListNode(void *p, uint64_t size)
 		listTail_3 = p;
 	} else if (targetTail == listTail_4) {
 		listTail_4 = p;
+	} else if (targetTail == listTail_5) {
+		listTail_5 = p;
+	} else if (targetTail == listTail_6) {
+		listTail_6 = p;
 	}
 }
 
@@ -256,7 +277,7 @@ static void *coalesce(void *bp)
     }
 
 
-    mm_checkheap(__LINE__);
+    //mm_checkheap(__LINE__);
     return bp;
 }
 
@@ -335,7 +356,21 @@ static void* findFit(size_t putSize)
 			}
 		}
 	}
-	for (bp = listTail_4; bp != list_4_start; bp = getListPointerPrev(bp)) {
+	if (putSize <= SEGMENT_BOUND_4) {
+		for (bp = listTail_4; bp != list_4_start; bp = getListPointerPrev(bp)) {
+			if (!getAllocated(getHeader(bp)) && (putSize <= getSize(getHeader(bp)))) {
+				return bp;
+			}
+		}
+	}
+	if (putSize <= SEGMENT_BOUND_5) {
+		for (bp = listTail_5; bp != list_5_start; bp = getListPointerPrev(bp)) {
+			if (!getAllocated(getHeader(bp)) && (putSize <= getSize(getHeader(bp)))) {
+				return bp;
+			}
+		}
+	}
+	for (bp = listTail_6; bp != list_6_start; bp = getListPointerPrev(bp)) {
 		if (!getAllocated(getHeader(bp)) && (putSize <= getSize(getHeader(bp)))) {
 			return bp;
 		}
@@ -349,18 +384,20 @@ static void* findFit(size_t putSize)
 bool mm_init(void) 
 {
     /* Create the initial empty heap */
-    if ((heapStart = mem_sbrk(12*HEADER_SIZE)) == (void *)-1){ 
+    if ((heapStart = mem_sbrk(16*HEADER_SIZE)) == (void *)-1){ 
 		return false;
 	}
     writeData(heapStart, 0);                          /* Alignment padding */
-    writeData(heapStart + (1*HEADER_SIZE), combine(80, 1)); /* Prologue header */ 
-    writeData(heapStart + (10*HEADER_SIZE), combine(80, 1)); /* Prologue footer */ 
-    writeData(heapStart + (11*HEADER_SIZE), combine(0, 1));     /* Epilogue header */
+    writeData(heapStart + (1*HEADER_SIZE), combine(112, 1)); /* Prologue header */ 
+    writeData(heapStart + (14*HEADER_SIZE), combine(112, 1)); /* Prologue footer */ 
+    writeData(heapStart + (15*HEADER_SIZE), combine(0, 1));     /* Epilogue header */
     
     heapStart += (2*HEADER_SIZE); 
     list_2_start = heapStart + (2*HEADER_SIZE);
     list_3_start = heapStart + (4*HEADER_SIZE); 
     list_4_start = heapStart + (6*HEADER_SIZE);
+    list_5_start = heapStart + (8*HEADER_SIZE);
+    list_6_start = heapStart + (10*HEADER_SIZE);
 
     //printf("%s\n", "PASSED LIST STARTS");                    
 
@@ -368,6 +405,8 @@ bool mm_init(void)
     listTail_2 = list_2_start;
     listTail_3 = list_3_start;
     listTail_4 = list_4_start;
+    listTail_5 = list_5_start;
+    listTail_6 = list_6_start;
 
     //printf("%s\n", "PASSED LIST TAILS");
 
@@ -389,13 +428,19 @@ bool mm_init(void)
     setListPointerPrev(listTail_4, NULL);
     setListPointerNext(listTail_4, NULL);
 
+    setListPointerPrev(listTail_5, NULL);
+    setListPointerNext(listTail_5, NULL);
+
+    setListPointerPrev(listTail_6, NULL);
+    setListPointerNext(listTail_6, NULL);
+
     /* Extend the empty heap with a free block of CHUNKSIZE bytes */
     if (addToHeap(MAX_SIZE) == NULL) {
     	printf("%s\n", "FAILED TO EXTEND HEAP WHEN INITIALIZING");
 		return false;
     }
 
-    mm_checkheap(__LINE__);
+    //mm_checkheap(__LINE__);
     return true;
 }
 
