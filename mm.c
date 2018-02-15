@@ -48,14 +48,24 @@
 
 static const uint64_t HEADER_SIZE = 8;
 static const uint64_t FOOTER_SIZE = 8;
-static const size_t MAX_SIZE = 4096;
+static const size_t MAX_SIZE = 2048;
 static const uint64_t MIN_BLOCK_SIZE = 32;
 
+static const uint64_t SEGMENT_BOUND_1 = 32;
+static const uint64_t SEGMENT_BOUND_2 = 64;
+static const uint64_t SEGMENT_BOUND_3 = 128;
+
 static char* heapStart = 0;
+static char* list_2_start = 0;
+static char* list_3_start = 0;
+static char* list_4_start = 0;
 //static char* prologuePointer = 0;
 static char* epiloguePointer = 0;
 //static char* nextFit;
 static char* listTail = 0;
+static char* listTail_2 = 0;
+static char* listTail_3 = 0;
+static char* listTail_4 = 0;
 
 static void *addToHeap(size_t words);
 static void put(void *bp, size_t asize);
@@ -146,6 +156,15 @@ static void deleteListNode(void* p)
 	if (listTail == p) {
 		setListPointerNext(prev, NULL);
 		listTail = prev;
+	} else if (listTail_2 == p) {
+		setListPointerNext(prev, NULL);
+		listTail_2 = prev;
+	} else if (listTail_3 == p) {
+		setListPointerNext(prev, NULL);
+		listTail_3 = prev;
+	} else if (listTail_4 == p) {
+		setListPointerNext(prev, NULL);
+		listTail_4 = prev;
 	} else {
 		if (getListPointerNext(p) == NULL || getListPointerPrev(p) == NULL) {
 			printf("%s\n", "FOLLOWING NULL POINTER");
@@ -156,12 +175,33 @@ static void deleteListNode(void* p)
 	
 }
 
-static void addListNode(void *p)
+static void addListNode(void *p, uint64_t size)
 {
-	setListPointerNext(listTail, p);
-	setListPointerPrev(p, listTail);
+	char* targetTail = 0;
+	if (size > SEGMENT_BOUND_3)  {
+		targetTail = listTail_4;
+	}
+	if (size <= SEGMENT_BOUND_3) {
+		targetTail = listTail_3;
+	}
+	if (size <= SEGMENT_BOUND_2) {
+		targetTail = listTail_2;
+	} 
+	if (size <= SEGMENT_BOUND_1) {
+		targetTail = listTail;
+	}
+	setListPointerNext(targetTail, p);
+	setListPointerPrev(p, targetTail);
 	setListPointerNext(p, NULL);
-	listTail = p;
+	if (targetTail == listTail) {
+		listTail = p;
+	} else if (targetTail == listTail_2) {
+		listTail_2 = p;
+	} else if (targetTail == listTail_3) {
+		listTail_3 = p;
+	} else if (targetTail == listTail_4) {
+		listTail_4 = p;
+	}
 }
 
 static void *coalesce(void *bp) 
@@ -171,7 +211,7 @@ static void *coalesce(void *bp)
     uint64_t size = getSize(getHeader(bp));
 
     if (previousIsAllocated && nextIsAllocated) {			/* Case 1 */
-    	addListNode(bp);
+    	addListNode(bp, size);
 		return bp;
     }
 
@@ -184,7 +224,7 @@ static void *coalesce(void *bp)
 		writeData(getHeader(bp), combine(size, 0));
 		writeData(getFooter(bp), combine(size,0));
 
-		addListNode(bp);
+		addListNode(bp, getSize(getHeader(bp)));
     }
 
     else if (!previousIsAllocated && nextIsAllocated) {		/* Case 3 */
@@ -197,7 +237,7 @@ static void *coalesce(void *bp)
 		writeData(getHeader(getPrevious(bp)), combine(size, 0));
 		bp = getPrevious(bp);
 
-		addListNode(bp);
+		addListNode(bp, getSize(getHeader(bp)));
     }
 
     else {													/* Case 4 */
@@ -212,7 +252,7 @@ static void *coalesce(void *bp)
 		writeData(getFooter(getNext(bp)), combine(size, 0));
 		bp = getPrevious(bp);
 
-		addListNode(bp);
+		addListNode(bp, getSize(getHeader(bp)));
     }
 
 
@@ -260,7 +300,7 @@ static void put(void* p, size_t putSize)
 		writeData(getHeader(p), combine(blockSize - putSize, 0));
 		writeData(getFooter(p), combine(blockSize - putSize, 0));
 
-		addListNode(p);
+		addListNode(p, getSize(getHeader(p)));
 	}
 	else {
 		deleteListNode(p);
@@ -274,17 +314,33 @@ static void* findFit(size_t putSize)
 {
 	void *bp;
 
-	for (bp = listTail; bp != heapStart; bp = getListPointerPrev(bp)) {
+	if (putSize <= SEGMENT_BOUND_1){
+		for (bp = listTail; bp != heapStart; bp = getListPointerPrev(bp)) {
+			if (!getAllocated(getHeader(bp)) && (putSize <= getSize(getHeader(bp)))) {
+				return bp;
+			}
+		}
+	}
+	if (putSize <= SEGMENT_BOUND_2) {
+		for (bp = listTail_2; bp != list_2_start; bp = getListPointerPrev(bp)) {
+			if (!getAllocated(getHeader(bp)) && (putSize <= getSize(getHeader(bp)))) {
+				return bp;
+			}
+		}
+	}
+	if (putSize <= SEGMENT_BOUND_3) {
+		for (bp = listTail_3; bp != list_3_start; bp = getListPointerPrev(bp)) {
+			if (!getAllocated(getHeader(bp)) && (putSize <= getSize(getHeader(bp)))) {
+				return bp;
+			}
+		}
+	}
+	for (bp = listTail_4; bp != list_4_start; bp = getListPointerPrev(bp)) {
 		if (!getAllocated(getHeader(bp)) && (putSize <= getSize(getHeader(bp)))) {
 			return bp;
 		}
 	}
 
-    /*for (bp = heapStart; getSize(getHeader(bp)) > 0; bp = getNext(bp)) {
-		if (!getAllocated(getHeader(bp)) && (putSize <= getSize(getHeader(bp)))) {
-		    return bp;
-		}
-    }*/
     return NULL;
 }
 
@@ -293,19 +349,45 @@ static void* findFit(size_t putSize)
 bool mm_init(void) 
 {
     /* Create the initial empty heap */
-    if ((heapStart = mem_sbrk(6*HEADER_SIZE)) == (void *)-1){ 
+    if ((heapStart = mem_sbrk(12*HEADER_SIZE)) == (void *)-1){ 
 		return false;
 	}
     writeData(heapStart, 0);                          /* Alignment padding */
-    writeData(heapStart + (1*HEADER_SIZE), combine(MIN_BLOCK_SIZE, 1)); /* Prologue header */ 
-    writeData(heapStart + (4*HEADER_SIZE), combine(MIN_BLOCK_SIZE, 1)); /* Prologue footer */ 
-    writeData(heapStart + (5*HEADER_SIZE), combine(0, 1));     /* Epilogue header */
-    heapStart += (2*HEADER_SIZE);                      
+    writeData(heapStart + (1*HEADER_SIZE), combine(80, 1)); /* Prologue header */ 
+    writeData(heapStart + (10*HEADER_SIZE), combine(80, 1)); /* Prologue footer */ 
+    writeData(heapStart + (11*HEADER_SIZE), combine(0, 1));     /* Epilogue header */
+    
+    heapStart += (2*HEADER_SIZE); 
+    list_2_start = heapStart + (2*HEADER_SIZE);
+    list_3_start = heapStart + (4*HEADER_SIZE); 
+    list_4_start = heapStart + (6*HEADER_SIZE);
 
-    setListPointerNext(heapStart, NULL);
-    setListPointerPrev(heapStart, NULL);
+    //printf("%s\n", "PASSED LIST STARTS");                    
+
     listTail = heapStart;
+    listTail_2 = list_2_start;
+    listTail_3 = list_3_start;
+    listTail_4 = list_4_start;
 
+    //printf("%s\n", "PASSED LIST TAILS");
+
+    setListPointerNext(listTail, NULL);
+    setListPointerPrev(listTail, NULL);
+
+    //printf("%s\n", "PASSED LISTTAIL POINTERS");
+
+    setListPointerPrev(listTail_2, NULL);
+    setListPointerNext(listTail_2, NULL);
+
+    //printf("%s\n", "PASSED LISTTAIL 2 POINTERS");
+
+    setListPointerPrev(listTail_3, NULL);
+    setListPointerNext(listTail_3, NULL);
+
+    //printf("%s\n", "PASSED LISTTAIL 3 POINTERS");
+
+    setListPointerPrev(listTail_4, NULL);
+    setListPointerNext(listTail_4, NULL);
 
     /* Extend the empty heap with a free block of CHUNKSIZE bytes */
     if (addToHeap(MAX_SIZE) == NULL) {
