@@ -73,6 +73,13 @@ static char* listTail_4 = 0;
 static char* listTail_5 = 0;
 static char* listTail_6 = 0;
 
+static char* nextFit_1 = 0;
+static char* nextFit_2 = 0;
+static char* nextFit_3 = 0;
+static char* nextFit_4 = 0;
+static char* nextFit_5 = 0;
+static char* nextFit_6 = 0;
+
 static void *addToHeap(size_t words);
 static void put(void *bp, size_t asize);
 static void *fit(size_t asize);
@@ -109,6 +116,15 @@ static inline uint64_t getAllocated(void* p)
 	return (getData(p) & 0x1);
 }
 
+static inline uint64_t getPreviousAllocated(void*p)
+{
+	return (getData(p) & 0x2);
+}
+
+static inline uint64_t combineWithPreviousAllocated(uint64_t data, uint64_t previousAllocated)
+{
+	return (data | previousAllocated);
+}
 static inline uint64_t combine(uint64_t size, uint64_t isAllocated)
 {
 	return (size | isAllocated);
@@ -158,6 +174,20 @@ static void deleteListNode(void* p)
 {
 	void* prev = getListPointerPrev(p);
 
+	if (nextFit_1 == p) {
+		nextFit_1 = prev;
+	} else if (nextFit_2 == p) {
+		nextFit_2 = prev;
+	} else if (nextFit_3 == p) {
+		nextFit_3 = prev;
+	} else if (nextFit_4 == p) {
+		nextFit_4 = prev;
+	} else if (nextFit_5 == p) {
+		nextFit_5 = prev;
+	} else if (nextFit_6 == p) {
+		nextFit_6 = prev;
+	}
+
 	if (listTail == p) {
 		setListPointerNext(prev, NULL);
 		listTail = prev;
@@ -177,9 +207,6 @@ static void deleteListNode(void* p)
 		setListPointerNext(prev, NULL);
 		listTail_6 = prev;
 	} else {
-		if (getListPointerNext(p) == NULL || getListPointerPrev(p) == NULL) {
-			printf("%s\n", "FOLLOWING NULL POINTER");
-		}
 		setListPointerPrev(getListPointerNext(p), getListPointerPrev(p));
 		setListPointerNext(getListPointerPrev(p), getListPointerNext(p));
 	}
@@ -337,41 +364,113 @@ static void* findFit(size_t putSize)
 
 	if (putSize <= SEGMENT_BOUND_1){
 		for (bp = listTail; bp != heapStart; bp = getListPointerPrev(bp)) {
-			if (!getAllocated(getHeader(bp)) && (putSize <= getSize(getHeader(bp)))) {
+			if ((putSize <= getSize(getHeader(bp)))) {
 				return bp;
 			}
 		}
+		/*for (bp = nextFit_1; bp != heapStart; bp = getListPointerPrev(bp)) {
+			if (!getAllocated(getHeader(bp)) && (putSize <= getSize(getHeader(bp)))) {
+				nextFit_1 = getListPointerPrev(bp);
+				return bp;
+			}
+		}
+		for (bp = listTail; bp != nextFit_1; bp = getListPointerPrev(bp)) {
+			if (!getAllocated(getHeader(bp)) && (putSize <= getSize(getHeader(bp)))) {
+				nextFit_1 = getListPointerPrev(bp);
+				return bp;
+			}
+		}*/
 	}
 	if (putSize <= SEGMENT_BOUND_2) {
 		for (bp = listTail_2; bp != list_2_start; bp = getListPointerPrev(bp)) {
-			if (!getAllocated(getHeader(bp)) && (putSize <= getSize(getHeader(bp)))) {
+			if ((putSize <= getSize(getHeader(bp)))) {
 				return bp;
 			}
 		}
+		/*for (bp = nextFit_2; bp != list_2_start; bp = getListPointerPrev(bp)) {
+			if (!getAllocated(getHeader(bp)) && (putSize <= getSize(getHeader(bp)))) {
+				nextFit_2 = getListPointerPrev(bp);
+				return bp;
+			}
+		}
+		for (bp = listTail_2; bp != nextFit_2; bp = getListPointerPrev(bp)) {
+			if (!getAllocated(getHeader(bp)) && (putSize <= getSize(getHeader(bp)))) {
+				nextFit_2 = getListPointerPrev(bp);
+				return bp;
+			}
+		}*/
 	}
 	if (putSize <= SEGMENT_BOUND_3) {
 		for (bp = listTail_3; bp != list_3_start; bp = getListPointerPrev(bp)) {
-			if (!getAllocated(getHeader(bp)) && (putSize <= getSize(getHeader(bp)))) {
+			if ((putSize <= getSize(getHeader(bp)))) {
 				return bp;
 			}
 		}
+		/*for (bp = nextFit_3; bp != list_3_start; bp = getListPointerPrev(bp)) {
+			if (!getAllocated(getHeader(bp)) && (putSize <= getSize(getHeader(bp)))) {
+				nextFit_3 = getListPointerPrev(bp);
+				return bp;
+			}
+		}
+		for (bp = listTail_3; bp != nextFit_3; bp = getListPointerPrev(bp)) {
+			if (!getAllocated(getHeader(bp)) && (putSize <= getSize(getHeader(bp)))) {
+				nextFit_3 = getListPointerPrev(bp);
+				return bp;
+			}
+		}*/
 	}
 	if (putSize <= SEGMENT_BOUND_4) {
 		for (bp = listTail_4; bp != list_4_start; bp = getListPointerPrev(bp)) {
-			if (!getAllocated(getHeader(bp)) && (putSize <= getSize(getHeader(bp)))) {
+			if ((putSize <= getSize(getHeader(bp)))) {
 				return bp;
 			}
 		}
+		/*for (bp = nextFit_4; bp != list_4_start; bp = getListPointerPrev(bp)) {
+			if (!getAllocated(getHeader(bp)) && (putSize <= getSize(getHeader(bp)))) {
+				nextFit_4 = getListPointerPrev(bp);
+				return bp;
+			}
+		}
+		for (bp = listTail_4; bp != nextFit_4; bp = getListPointerPrev(bp)) {
+			if (!getAllocated(getHeader(bp)) && (putSize <= getSize(getHeader(bp)))) {
+				nextFit_4 = getListPointerPrev(bp);
+				return bp;
+			}
+		}*/
 	}
 	if (putSize <= SEGMENT_BOUND_5) {
 		for (bp = listTail_5; bp != list_5_start; bp = getListPointerPrev(bp)) {
-			if (!getAllocated(getHeader(bp)) && (putSize <= getSize(getHeader(bp)))) {
+			if ((putSize <= getSize(getHeader(bp)))) {
 				return bp;
 			}
 		}
+		/*for (bp = nextFit_5; bp != list_5_start; bp = getListPointerPrev(bp)) {
+			if (!getAllocated(getHeader(bp)) && (putSize <= getSize(getHeader(bp)))) {
+				nextFit_5 = getListPointerPrev(bp);
+				return bp;
+			}
+		}
+		for (bp = listTail_5; bp != nextFit_5; bp = getListPointerPrev(bp)) {
+			if (!getAllocated(getHeader(bp)) && (putSize <= getSize(getHeader(bp)))) {
+				nextFit_5 = getListPointerPrev(bp);
+				return bp;
+			}
+		}*/
 	}
-	for (bp = listTail_6; bp != list_6_start; bp = getListPointerPrev(bp)) {
+	/*for (bp = listTail_6; bp != list_6_start; bp = getListPointerPrev(bp)) {
 		if (!getAllocated(getHeader(bp)) && (putSize <= getSize(getHeader(bp)))) {
+			return bp;
+		}
+	}*/
+	for (bp = nextFit_6; bp != list_6_start; bp = getListPointerPrev(bp)) {
+		if ((putSize <= getSize(getHeader(bp)))) {
+			nextFit_6 = getListPointerPrev(bp);
+			return bp;
+		}
+	}
+	for (bp = listTail_6; bp != nextFit_6; bp = getListPointerPrev(bp)) {
+		if ((putSize <= getSize(getHeader(bp)))) {
+			nextFit_6 = getListPointerPrev(bp);
 			return bp;
 		}
 	}
@@ -407,6 +506,13 @@ bool mm_init(void)
     listTail_4 = list_4_start;
     listTail_5 = list_5_start;
     listTail_6 = list_6_start;
+
+    nextFit_1 = heapStart;
+    nextFit_2 = list_2_start;
+    nextFit_3 = list_3_start;
+    nextFit_4 = list_4_start;
+    nextFit_5 = list_5_start;
+    nextFit_6 = list_6_start;
 
     //printf("%s\n", "PASSED LIST TAILS");
 
