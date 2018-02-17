@@ -420,12 +420,12 @@ static void* findFit(size_t putSize)
 		}*/
 	}
 	if (putSize <= SEGMENT_BOUND_4) {
-		for (bp = listTail_4; bp != list_4_start; bp = getListPointerPrev(bp)) {
+		/*for (bp = listTail_4; bp != list_4_start; bp = getListPointerPrev(bp)) {
 			if ((putSize <= getSize(getHeader(bp)))) {
 				return bp;
 			}
-		}
-		/*for (bp = nextFit_4; bp != list_4_start; bp = getListPointerPrev(bp)) {
+		}*/
+		for (bp = nextFit_4; bp != list_4_start; bp = getListPointerPrev(bp)) {
 			if (!getAllocated(getHeader(bp)) && (putSize <= getSize(getHeader(bp)))) {
 				nextFit_4 = getListPointerPrev(bp);
 				return bp;
@@ -436,15 +436,15 @@ static void* findFit(size_t putSize)
 				nextFit_4 = getListPointerPrev(bp);
 				return bp;
 			}
-		}*/
+		}
 	}
 	if (putSize <= SEGMENT_BOUND_5) {
-		for (bp = listTail_5; bp != list_5_start; bp = getListPointerPrev(bp)) {
+		/*for (bp = listTail_5; bp != list_5_start; bp = getListPointerPrev(bp)) {
 			if ((putSize <= getSize(getHeader(bp)))) {
 				return bp;
 			}
-		}
-		/*for (bp = nextFit_5; bp != list_5_start; bp = getListPointerPrev(bp)) {
+		}*/
+		for (bp = nextFit_5; bp != list_5_start; bp = getListPointerPrev(bp)) {
 			if (!getAllocated(getHeader(bp)) && (putSize <= getSize(getHeader(bp)))) {
 				nextFit_5 = getListPointerPrev(bp);
 				return bp;
@@ -455,7 +455,7 @@ static void* findFit(size_t putSize)
 				nextFit_5 = getListPointerPrev(bp);
 				return bp;
 			}
-		}*/
+		}
 	}
 	/*for (bp = listTail_6; bp != list_6_start; bp = getListPointerPrev(bp)) {
 		if (!getAllocated(getHeader(bp)) && (putSize <= getSize(getHeader(bp)))) {
